@@ -1,8 +1,8 @@
-#include "/home/cranberry/Projects/clearScreen/clearScreenLinux.h"
 #include "tomatoInLine.h"
 
 #include <asm-generic/errno.h>
 #include <bits/getopt_core.h>
+#include <bits/pthreadtypes.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -20,26 +20,37 @@
 static int app_mode = 0;
 static int state = 0;
 
-pthread_mutex_t stop;
-pthread_mutex_t state_mu;
+pthread_mutex_t stop = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t stop_cond = PTHREAD_COND_INITIALIZER;
 
+pthread_mutex_t state_mu = PTHREAD_MUTEX_INITIALIZER;
+
+void clearScreen(){
+   printf("\033[2J\033[H");
+}
 void drop_app(int sig) {
   if (app_mode == MODE_CLOCK) {
     unlink(PIPE_NAME);
+    pthread_mutex_destroy(&stop);
+    pthread_mutex_destroy(&state_mu);
     exit(EXIT_SUCCESS);
   }
 }
 
-void clockTimer(int time) {
+void clockTimer(int time, char *what_to_do) {
   int n_time = time;
+  int n_state = 0;
   while (n_time) {
-     clearScreen();
-     printf("%02d : %02d\n", n_time / 60, n_time % 60);
-        //printf("%d\n",state); 
-    switch (state) {
+    pthread_mutex_lock(&state_mu);
+    n_state = state;
+    pthread_mutex_unlock(&state_mu);
+
+    clearScreen();
+    printf("%s %02d : %02d\n",what_to_do, n_time / 60, n_time % 60);
+
+    switch (n_state) {
     case S_STOP:
-      puts("rich lock");
-      pthread_mutex_lock(&stop);
+      pthread_cond_wait(&stop_cond, &stop);
       break;
     case S_PROGRESS:
       sleep(1);
@@ -51,7 +62,7 @@ void clockTimer(int time) {
       break;
     case S_SKIP:
       state = S_PROGRESS;
-         return;
+      return;
       break;
     case S_KILL:
       kill(getpid(), SIGINT);
@@ -67,7 +78,7 @@ void *init_mode(void *arg) {
   state = S_PROGRESS;
 
   pthread_mutex_init(&stop, NULL);
-  pthread_mutex_init(&state_mu,  NULL);
+  pthread_mutex_init(&state_mu, NULL);
 
   switch (mode) {
   case 1:
@@ -75,16 +86,16 @@ void *init_mode(void *arg) {
     rest_time = 5 * 60;
     break;
   case TEST_MODE:
-    work_time = 5;
-    rest_time = 5;
+    work_time = 7;
+    rest_time = 2;
     break;
   default:
     printf("corrapted mode %d \n", mode);
     break;
   }
   while (1) {
-    clockTimer(work_time);
-    clockTimer(rest_time);
+    clockTimer(work_time,"work");
+    clockTimer(rest_time, "rest");
   }
   return 0;
 }
@@ -104,37 +115,42 @@ void read_from_tomato_pipe() {
   int rd;
   while (1) {
     rd = read(fd, &cmd, sizeof(char));
-    if (rd){
-    switch (cmd) {
-    case 's':
-      state = S_STOP;
-      break;
-    case 'c':
-      state = S_PROGRESS;
-      pthread_mutex_unlock(&stop);
-      break;
-    case 'k':
-      state = S_KILL;
-      pthread_mutex_unlock(&stop);
-      break;
-    case 'r':
-      state = S_RESTART;
-      pthread_mutex_unlock(&stop);
-      break;
-    case 'p':
-      state = S_SKIP;
-      pthread_mutex_unlock(&stop);
-      break;
-    }
+    if (rd) {
+      pthread_mutex_lock(&state_mu);
+      switch (cmd) {
+      case 's':
+        state = S_STOP;
+        break;
+      case 'c':
+        state = S_PROGRESS;
+        pthread_cond_signal(&stop_cond);
+        break;
+      case 'k':
+        state = S_KILL;
+        pthread_cond_signal(&stop_cond);
+        break;
+      case 'r':
+        state = S_RESTART;
+        pthread_cond_signal(&stop_cond);
+        break;
+      case 'p':
+        state = S_SKIP;
+        pthread_cond_signal(&stop_cond);
+        break;
+      }
+      pthread_mutex_unlock(&state_mu);
     }
   }
   close(fd);
 }
 
 void write_to_tomato_pipe(char cmd) {
-  int fd = open(PIPE_NAME, O_WRONLY);
+  int fd = open(PIPE_NAME, O_WRONLY | O_NONBLOCK);
   if (fd) {
     int f = write(fd, &cmd, sizeof(char));
+    if (f == -1) {
+      perror("error while write in tomato fifo");
+    }
   } else {
     perror("can't write to pipe");
   }
@@ -164,7 +180,8 @@ void init_pipe() {
 
 int main(int argc, char **argv) {
   signal(SIGINT, drop_app);
-  int opt = 0, fd = 0;
+  signal(SIGTERM,drop_app);
+  int opt = 0;
 
   while ((opt = getopt(argc, argv, "ic:h")) != -1) {
 
@@ -177,7 +194,6 @@ int main(int argc, char **argv) {
       init_pipe();
       init_timer();
       read_from_tomato_pipe();
-      close(fd);
       pthread_exit(NULL);
       break;
     case 'c':
