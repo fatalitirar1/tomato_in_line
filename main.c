@@ -37,22 +37,23 @@ void drop_app(int sig) {
 
 void clockTimer(int time, char *what_to_do) {
   int n_time = time;
-  int n_state = 0;
+  int n_state = S_STOP;
   char *buff;
   while (n_time) {
     pthread_mutex_lock(&state_mu);
     n_state = state;
     pthread_mutex_unlock(&state_mu);
-
-    clearScreen();
+    //clearScreen();
     int fd = open("/tmp/tomato_buffer", O_NONBLOCK | O_WRONLY | O_CREAT);
     if (fd == -1) {
       perror("can't open tomato buffer");
     }
 
-    sprintf(buff, "%s %02d : %02d\n", what_to_do, n_time / 60, n_time % 60);
+    sprintf(buff, "%s %02d : %02d", what_to_do, n_time / 60, n_time % 60);
     write(fd, buff, strlen(buff));
     close(fd);
+    puts(buff);
+    fflush(stdout); 
     switch (n_state) {
     case S_STOP:
       pthread_cond_wait(&stop_cond, &stop);
@@ -80,7 +81,7 @@ void *init_mode(void *arg) {
   int mode = (int)(intptr_t)arg;
   int work_time = 0;
   int rest_time = 0;
-  state = S_PROGRESS;
+  state = S_STOP;
 
   pthread_mutex_init(&stop, NULL);
   pthread_mutex_init(&state_mu, NULL);
