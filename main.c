@@ -25,9 +25,7 @@ pthread_cond_t stop_cond = PTHREAD_COND_INITIALIZER;
 
 pthread_mutex_t state_mu = PTHREAD_MUTEX_INITIALIZER;
 
-void clearScreen(){
-   printf("\033[2J\033[H");
-}
+void clearScreen() { printf("\033[2J\033[H"); }
 void drop_app(int sig) {
   if (app_mode == MODE_CLOCK) {
     unlink(PIPE_NAME);
@@ -40,14 +38,21 @@ void drop_app(int sig) {
 void clockTimer(int time, char *what_to_do) {
   int n_time = time;
   int n_state = 0;
+  char *buff;
   while (n_time) {
     pthread_mutex_lock(&state_mu);
     n_state = state;
     pthread_mutex_unlock(&state_mu);
 
     clearScreen();
-    printf("%s %02d : %02d\n",what_to_do, n_time / 60, n_time % 60);
+    int fd = open("/tmp/tomato_buffer", O_NONBLOCK | O_WRONLY | O_CREAT);
+    if (fd == -1) {
+      perror("can't open tomato buffer");
+    }
 
+    sprintf(buff, "%s %02d : %02d\n", what_to_do, n_time / 60, n_time % 60);
+    write(fd, buff, strlen(buff));
+    close(fd);
     switch (n_state) {
     case S_STOP:
       pthread_cond_wait(&stop_cond, &stop);
@@ -94,7 +99,7 @@ void *init_mode(void *arg) {
     break;
   }
   while (1) {
-    clockTimer(work_time,"work");
+    clockTimer(work_time, "work");
     clockTimer(rest_time, "rest");
   }
   return 0;
@@ -180,7 +185,7 @@ void init_pipe() {
 
 int main(int argc, char **argv) {
   signal(SIGINT, drop_app);
-  signal(SIGTERM,drop_app);
+  signal(SIGTERM, drop_app);
   int opt = 0;
 
   while ((opt = getopt(argc, argv, "ic:h")) != -1) {
