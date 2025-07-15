@@ -38,7 +38,7 @@ void drop_app(int sig) {
 void clockTimer(int time, char *what_to_do) {
   int n_time = time;
   int n_state = S_STOP;
-  char *buff;
+  char buff[32];
   while (n_time) {
     pthread_mutex_lock(&state_mu);
     n_state = state;
@@ -121,6 +121,7 @@ void read_from_tomato_pipe() {
   int rd;
   while (1) {
     rd = read(fd, &cmd, sizeof(char));
+    usleep(100000);
     if (rd) {
       pthread_mutex_lock(&state_mu);
       switch (cmd) {
