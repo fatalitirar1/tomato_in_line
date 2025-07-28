@@ -16,7 +16,7 @@
 
 #define PIPE_NAME "/tmp/tomato_pipe"
 #define TEST_MODE 99
-#ifdef CLR
+#ifndef CLR
 #define CLR 0
 #endif
 
@@ -46,7 +46,9 @@ void clockTimer(int time, char *what_to_do) {
     pthread_mutex_lock(&state_mu);
     n_state = state;
     pthread_mutex_unlock(&state_mu);
-    //clearScreen();
+    if (CLR){
+      clearScreen();
+    }
     int fd = open("/tmp/tomato_buffer", O_NONBLOCK | O_WRONLY | O_CREAT,0666);
     if (fd == -1) {
       perror("can't open tomato buffer");

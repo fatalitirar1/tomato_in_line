@@ -1,0 +1,1 @@
+The usual Pomodoro method, implemented by means of Linux, created for educational and entertainment purposes, I have it built into the polybar, where it starts on click, you can do the same or as you like
