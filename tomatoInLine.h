@@ -16,6 +16,11 @@ void print_help(){
    puts("toamto have two modes");
    puts("-i {n} where n is number of mode");
    puts("-c to controll");
+   puts("   -c s to stop");
+   puts("   -c c to continue");
+   puts("   -c k to kill app tomato timer");
+   puts("   -c r to restart timer");
+   puts("   -c p to skip curent timer");
 }
 
 
