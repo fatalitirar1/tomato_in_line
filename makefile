@@ -6,4 +6,6 @@ ex:
 	gcc main.c -o $(bin_folder)/test.o
 
 release:
-	gcc main.c -o $(PATH)/tomato_in_line
+	gcc main.c -o $(PATH)/tomato_in_line $(if $(CLR),-DCLR=$(CLR),)
+
+ 
